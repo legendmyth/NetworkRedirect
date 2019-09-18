@@ -1,3 +1,5 @@
 /.vs
 /ConsoleServer/bin
 /ConsoleServer/obj
+/ClientRedirect/bin
+/ClientRedirect/obj
