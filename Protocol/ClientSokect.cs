@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Net.Sockets;
 using System.Text;
 
-namespace Network
+namespace Protocol
 {
     public class ClientSocket
     {

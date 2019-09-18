@@ -3,3 +3,7 @@
 /ConsoleServer/obj
 /ClientRedirect/bin
 /ClientRedirect/obj
+/Protocol/bin
+/Protocol/obj
+/ServerRedirect/bin
+/ServerRedirect/obj

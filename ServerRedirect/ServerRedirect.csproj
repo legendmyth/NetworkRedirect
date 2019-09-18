@@ -37,12 +37,16 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="ClientSokect.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="ProtocolData.cs" />
     <Compile Include="SimpleServer.cs" />
     <Compile Include="SimpleServerNew.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Protocol\Protocol.csproj">
+      <Project>{67290ddb-927a-4d41-bac4-28f1106abc57}</Project>
+      <Name>Protocol</Name>
+    </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>
