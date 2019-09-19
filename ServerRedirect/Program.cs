@@ -9,7 +9,7 @@ namespace ServerRedirect
         static void Main(string[] args)
         {
             SimpleServerNew simpleServer = new SimpleServerNew();
-            simpleServer.OpenServer(12345, 23456);
+            simpleServer.OpenServer(12345, 34567);
             Console.ReadKey();
         }
     }

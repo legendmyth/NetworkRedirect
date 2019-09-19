@@ -10,11 +10,13 @@ namespace ServerRedirect
 {
     public class SimpleServerNew
     {
+        static int protocalHeadSize = 13;
+
         private int index = 1;
 
         private Socket ServerSocketRedirect = null;//转发套接字
         private Socket ServerSocketInput = null;//对外开放的服务套接字
-        private static int bufferSize = 1024 * 1024;
+        private static int bufferSize = 10240;
 
         private byte[] redirectReciveBuffer = new byte[bufferSize];
         private byte[] inputReciveBuffer = new byte[bufferSize];
@@ -50,7 +52,7 @@ namespace ServerRedirect
         {
             Socket socket = asyncResult.AsyncState as Socket;            
             clientSocketRedirect = socket.EndAccept(asyncResult);
-            Console.WriteLine(String.Format("redirect connect success({0})", clientSocketRedirect.AddressFamily));
+            Console.WriteLine(String.Format("转发接口连接成功({0}:{1})", (clientSocketRedirect.RemoteEndPoint as IPEndPoint).Address.ToString(), (clientSocketRedirect.RemoteEndPoint as IPEndPoint).Port));
             clientSocketRedirect.BeginReceive(redirectReciveBuffer, 0, bufferSize, SocketFlags.None, new AsyncCallback(RedirectReciveCallBack), clientSocketRedirect);
         }
         private void ServerSocketInputAcceptCallBack(IAsyncResult asyncResult)
@@ -58,20 +60,22 @@ namespace ServerRedirect
             Socket socket = asyncResult.AsyncState as Socket;
             ClientSocket clientSokect = new ClientSocket();
             clientSokect.Buffer = new byte[bufferSize];
-            clientSokect.Id = index++;
+            clientSokect.Id = index;
+            index++;
             clientSokect.Socket = socket.EndAccept(asyncResult); 
             clientSocketInputs.Add(clientSokect.Id, clientSokect);
             
             if (IsOnline(clientSocketRedirect))
             {
                 ProtocolData data = new ProtocolData();
+                data.DataSize = protocalHeadSize;
                 data.ClientId = clientSokect.Id;
                 data.MessageType = MessageType.Connect;
                 data.Port = (clientSokect.Socket.RemoteEndPoint as IPEndPoint).Port;
                 Console.WriteLine(String.Format(DateTime.Now.ToString("HH:mm:ss.fff")+ "发送连接请求:{0}",GetHexString(data.toByte()," ")));
                 clientSocketRedirect.BeginSend(data.toByte(), 0, data.toByte().Length, SocketFlags.None, new AsyncCallback(RedirectSendCallBack), clientSocketRedirect);
             }
-            clientSokect.Socket.BeginReceive(clientSokect.Buffer, 0, bufferSize, SocketFlags.None, new AsyncCallback(InputReciveCallBack), clientSokect);
+            clientSokect.Socket.BeginReceive(clientSokect.Buffer, 0, bufferSize- protocalHeadSize, SocketFlags.None, new AsyncCallback(InputReciveCallBack), clientSokect);
             socket.BeginAccept(new AsyncCallback(ServerSocketInputAcceptCallBack), socket);
         }
 
@@ -87,56 +91,78 @@ namespace ServerRedirect
             if (IsOnline(socket))//转发端口在线
             {
                 int size = socket.EndReceive(asyncResult);
-                byte[] tmp = new byte[size];
-                Array.Copy(redirectReciveBuffer, tmp, size);
-                Console.WriteLine(DateTime.Now.ToString("HH: mm:ss.fff") + "转发接口接收到数据 :" + GetHexString(tmp, " "));
-                ProtocolData protocolData = ProtocolData.convertToProtocolData(tmp);
-                if (protocolData.MessageType == MessageType.Close)//如果接收方断开连接，则主动断开连接
-                {
-                    if (!this.clientSocketInputs.ContainsKey(protocolData.ClientId))
-                    {
-                        Console.WriteLine(String.Format("找不到编号为{0}的客户端", protocolData.ClientId));
-                    }
-                    else
-                    {
-                        ClientSocket clientSocket = this.clientSocketInputs[protocolData.ClientId];
-                        lock (clientSocket)
-                        {
-                            if (IsOnline(clientSocket.Socket))
-                            {
-                                clientSocket.Socket.Shutdown(SocketShutdown.Both);
-                                clientSocket.Socket.Close();
-                            }
-                        }
-                        this.clientSocketInputs.Remove(protocolData.ClientId);
-                    }
+                byte[] recive = new byte[size];
+                Array.Copy(redirectReciveBuffer, recive, size);
+                DealData(socket, recive);
+                socket.BeginReceive(redirectReciveBuffer, 0, bufferSize, SocketFlags.None, new AsyncCallback(RedirectReciveCallBack), socket);
+            }
+            else
+            {
+                Console.WriteLine("转发端口掉线");
+            }
+        }
 
+        private void DealData(Socket socket, byte[] buffer)
+        {
+            //Console.WriteLine(DateTime.Now.ToString("HH: mm:ss.fff") + "转发接口接收到数据 :" + GetHexString(tmp, " "));
+            if (buffer.Length < protocalHeadSize)
+            {
+                byte[] t = new byte[protocalHeadSize];
+                Array.Copy(buffer, t, buffer.Length);
+                int s = protocalHeadSize - buffer.Length;
+                for (int i = 0; i < s; i++)
+                {
+                    socket.Receive(t, buffer.Length + i, 1, SocketFlags.None);
                 }
-                else if (protocolData.MessageType == MessageType.SendMessage)
+                DealData(socket, t);
+            }
+            ProtocolData tmpData = ProtocolData.convertToProtocolData(buffer);
+            if(tmpData.DataSize> buffer.Length)
+            {
+                byte []t = new byte[tmpData.DataSize];
+                Array.Copy(buffer, t, buffer.Length);
+                int s = tmpData.DataSize - buffer.Length;
+                for (int i = 0; i < s; i++)
                 {
-                    if (!this.clientSocketInputs.ContainsKey(protocolData.ClientId))
+                    socket.Receive(t, buffer.Length + i, 1, SocketFlags.None);
+                }
+                DealData(socket, t);
+            }
+            else  if (tmpData.DataSize == buffer.Length)
+            {
+                if (tmpData.MessageType == MessageType.Close)//如果接收方断开连接，则主动断开连接
+                {
+                    ClientSocket clientSocket = this.clientSocketInputs[tmpData.ClientId];
+                    if (IsOnline(clientSocket.Socket))
                     {
-                        Console.WriteLine(String.Format("找不到编号为{0}的客户端", protocolData.ClientId));
+                        clientSocket.Socket.Shutdown(SocketShutdown.Both);
+                        clientSocket.Socket.Close();
                     }
-                    else
+                    this.clientSocketInputs.Remove(tmpData.ClientId);
+                }
+                else if (tmpData.MessageType == MessageType.SendMessage)
+                {
+                    ClientSocket clientSocket = this.clientSocketInputs[tmpData.ClientId];
+                    if (IsOnline(clientSocket.Socket))
                     {
-                        ClientSocket clientSocket = this.clientSocketInputs[protocolData.ClientId];
-                        lock (clientSocket)
-                        {
-                            if (IsOnline(clientSocket.Socket))
-                            {
-                                clientSocket.Socket.BeginSend(protocolData.Data, 0, protocolData.Data.Length, SocketFlags.None, new AsyncCallback(InputSendCallBack), this.clientSocketInputs[protocolData.ClientId]);
-                            }
-                        }
+                        clientSocket.Socket.BeginSend(tmpData.Data, 0, tmpData.Data.Length, SocketFlags.None, new AsyncCallback(InputSendCallBack), this.clientSocketInputs[tmpData.ClientId]);
                     }
-
                 }
                 else
                 {
                     Console.WriteLine("未识别的指令");
                 }
-                socket.BeginReceive(redirectReciveBuffer, 0, bufferSize, SocketFlags.None, new AsyncCallback(RedirectReciveCallBack), socket);
             }
+            else
+            {
+                byte[] temp1 = new byte[tmpData.DataSize];
+                byte[] temp2 = new byte[buffer.Length - tmpData.DataSize];
+                Array.Copy(buffer, 0, temp1, 0, temp1.Length);
+                Array.Copy(buffer, tmpData.DataSize, temp2, 0, temp2.Length);
+                DealData(socket, temp1);
+                DealData(socket, temp2);
+            }
+            
         }
 
         /// <summary>
@@ -146,9 +172,11 @@ namespace ServerRedirect
         /// </summary>
         private void InputReciveCallBack(IAsyncResult asyncResult)
         {
+            
             ClientSocket clientSocket = asyncResult.AsyncState as ClientSocket;
             lock (clientSocketRedirect)
             {
+                Console.WriteLine("asyncResult.CompletedSynchronously "+ asyncResult.CompletedSynchronously);
                 if (IsOnline(clientSocket.Socket))//客户端在线，则转发接收到的数据
                 {
                     int size = clientSocket.Socket.EndReceive(asyncResult);
@@ -160,10 +188,12 @@ namespace ServerRedirect
                         ProtocolData protocolData = new ProtocolData();
                         protocolData.ClientId = clientSocket.Id;
                         protocolData.MessageType = MessageType.SendMessage;
+                        protocolData.Port = (clientSocket.Socket.RemoteEndPoint as IPEndPoint).Port;
+                        protocolData.DataSize = size + protocalHeadSize;
                         protocolData.Data = tmp;
                         clientSocketRedirect.BeginSend(protocolData.toByte(), 0, protocolData.toByte().Length, SocketFlags.None, new AsyncCallback(RedirectSendCallBack), clientSocketRedirect);
                     }
-                    clientSocket.Socket.BeginReceive(clientSocket.Buffer, 0, bufferSize, SocketFlags.None, new AsyncCallback(InputReciveCallBack), clientSocket);
+                    clientSocket.Socket.BeginReceive(clientSocket.Buffer, 0, bufferSize - protocalHeadSize, SocketFlags.None, new AsyncCallback(InputReciveCallBack), clientSocket);
                 }
                 else//客户端掉线，则发送关闭指令
                 {
@@ -172,6 +202,8 @@ namespace ServerRedirect
                         ProtocolData protocolData = new ProtocolData();
                         protocolData.ClientId = clientSocket.Id;
                         protocolData.MessageType = MessageType.Close;
+                        protocolData.DataSize = protocalHeadSize;
+                        //protocolData.Port = (clientSocket.Socket.RemoteEndPoint as IPEndPoint).Port;
                         clientSocketRedirect.BeginSend(protocolData.toByte(), 0, protocolData.toByte().Length, SocketFlags.None, new AsyncCallback(RedirectSendCallBack), clientSocketRedirect);
                     }
                 }
@@ -214,6 +246,26 @@ namespace ServerRedirect
         private bool IsOnline(Socket socket)
         {
             return (socket != null) && socket.Connected && !(socket.Poll(1000, SelectMode.SelectRead) && (socket.Available == 0));
+            //bool blockingState = client.Blocking;
+            //try
+            //{
+            //    byte[] tmp = new byte[1];
+            //    client.Blocking = false;
+            //    client.Send(tmp, 0, 0);
+            //    return false;
+            //}
+            //catch (SocketException e)
+            //{
+            //    // 产生 10035 == WSAEWOULDBLOCK 错误，说明被阻止了，但是还是连接的
+            //    if (e.NativeErrorCode.Equals(10035))
+            //        return false;
+            //    else
+            //        return true;
+            //}
+            //finally
+            //{
+            //    client.Blocking = blockingState;    // 恢复状态
+            //}
         }
     }
 }
