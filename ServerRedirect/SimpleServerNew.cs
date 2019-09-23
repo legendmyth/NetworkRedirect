@@ -1,6 +1,7 @@
 ﻿using Protocol;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -12,11 +13,13 @@ namespace ServerRedirect
     {
         static int protocalHeadSize = 13;
 
+        private FileStream sendFileStream = new FileStream("send.1", FileMode.Append);
+        private FileStream reciveFileStream = new FileStream("recive.1", FileMode.Append);
         private int index = 1;
 
         private Socket ServerSocketRedirect = null;//转发套接字
         private Socket ServerSocketInput = null;//对外开放的服务套接字
-        private static int bufferSize = 10240;
+        private static int bufferSize = 100;
 
         private byte[] redirectReciveBuffer = new byte[bufferSize];
         private byte[] inputReciveBuffer = new byte[bufferSize];
@@ -72,8 +75,10 @@ namespace ServerRedirect
                 data.ClientId = clientSokect.Id;
                 data.MessageType = MessageType.Connect;
                 data.Port = (clientSokect.Socket.RemoteEndPoint as IPEndPoint).Port;
-                Console.WriteLine(String.Format(DateTime.Now.ToString("HH:mm:ss.fff")+ "发送连接请求:{0}",GetHexString(data.toByte()," ")));
+                //Console.WriteLine(String.Format(DateTime.Now.ToString("HH:mm:ss.fff")+ "发送连接请求:{0}",GetHexString(data.toByte()," ")));
                 clientSocketRedirect.BeginSend(data.toByte(), 0, data.toByte().Length, SocketFlags.None, new AsyncCallback(RedirectSendCallBack), clientSocketRedirect);
+                sendFileStream.Write(data.toByte(), 0, data.toByte().Length);
+                sendFileStream.Flush();
             }
             clientSokect.Socket.BeginReceive(clientSokect.Buffer, 0, bufferSize- protocalHeadSize, SocketFlags.None, new AsyncCallback(InputReciveCallBack), clientSokect);
             socket.BeginAccept(new AsyncCallback(ServerSocketInputAcceptCallBack), socket);
@@ -93,6 +98,11 @@ namespace ServerRedirect
                 int size = socket.EndReceive(asyncResult);
                 byte[] recive = new byte[size];
                 Array.Copy(redirectReciveBuffer, recive, size);
+                lock (reciveFileStream)
+                {
+                    reciveFileStream.Write(recive, 0, size);
+                    reciveFileStream.Flush();
+                }
                 DealData(socket, recive);
                 socket.BeginReceive(redirectReciveBuffer, 0, bufferSize, SocketFlags.None, new AsyncCallback(RedirectReciveCallBack), socket);
             }
@@ -113,8 +123,11 @@ namespace ServerRedirect
                 for (int i = 0; i < s; i++)
                 {
                     socket.Receive(t, buffer.Length + i, 1, SocketFlags.None);
+                    reciveFileStream.Write(t, buffer.Length + i, 1);
                 }
+                reciveFileStream.Flush();
                 DealData(socket, t);
+                return;
             }
             ProtocolData tmpData = ProtocolData.convertToProtocolData(buffer);
             if(tmpData.DataSize> buffer.Length)
@@ -125,7 +138,9 @@ namespace ServerRedirect
                 for (int i = 0; i < s; i++)
                 {
                     socket.Receive(t, buffer.Length + i, 1, SocketFlags.None);
+                    reciveFileStream.Write(t, buffer.Length + i, 1);
                 }
+                reciveFileStream.Flush();
                 DealData(socket, t);
             }
             else  if (tmpData.DataSize == buffer.Length)
@@ -176,22 +191,27 @@ namespace ServerRedirect
             ClientSocket clientSocket = asyncResult.AsyncState as ClientSocket;
             lock (clientSocketRedirect)
             {
-                Console.WriteLine("asyncResult.CompletedSynchronously "+ asyncResult.CompletedSynchronously);
+                //Console.WriteLine("asyncResult.CompletedSynchronously "+ asyncResult.CompletedSynchronously);
                 if (IsOnline(clientSocket.Socket))//客户端在线，则转发接收到的数据
                 {
                     int size = clientSocket.Socket.EndReceive(asyncResult);
                     byte[] tmp = new byte[size];
                     Array.Copy(clientSocket.Buffer, tmp, size);
-                    Console.WriteLine(DateTime.Now.ToString("HH: mm:ss.fff") + "客户端接收到数据 :" + GetHexString(tmp, " "));
+                    //Console.WriteLine(DateTime.Now.ToString("HH: mm:ss.fff") + "客户端接收到数据 :" + GetHexString(tmp, " "));
                     if (IsOnline(clientSocketRedirect))
                     {
                         ProtocolData protocolData = new ProtocolData();
                         protocolData.ClientId = clientSocket.Id;
                         protocolData.MessageType = MessageType.SendMessage;
-                        protocolData.Port = (clientSocket.Socket.RemoteEndPoint as IPEndPoint).Port;
+                        //protocolData.Port = (clientSocket.Socket.RemoteEndPoint as IPEndPoint).Port;
                         protocolData.DataSize = size + protocalHeadSize;
                         protocolData.Data = tmp;
                         clientSocketRedirect.BeginSend(protocolData.toByte(), 0, protocolData.toByte().Length, SocketFlags.None, new AsyncCallback(RedirectSendCallBack), clientSocketRedirect);
+                        lock (sendFileStream)
+                        {
+                            sendFileStream.Write(protocolData.toByte(), 0, protocolData.toByte().Length);
+                            sendFileStream.Flush();
+                        }
                     }
                     clientSocket.Socket.BeginReceive(clientSocket.Buffer, 0, bufferSize - protocalHeadSize, SocketFlags.None, new AsyncCallback(InputReciveCallBack), clientSocket);
                 }
@@ -205,6 +225,11 @@ namespace ServerRedirect
                         protocolData.DataSize = protocalHeadSize;
                         //protocolData.Port = (clientSocket.Socket.RemoteEndPoint as IPEndPoint).Port;
                         clientSocketRedirect.BeginSend(protocolData.toByte(), 0, protocolData.toByte().Length, SocketFlags.None, new AsyncCallback(RedirectSendCallBack), clientSocketRedirect);
+                        lock (sendFileStream)
+                        {
+                            sendFileStream.Write(protocolData.toByte(), 0, protocolData.toByte().Length);
+                            sendFileStream.Flush();
+                        }
                     }
                 }
             }
