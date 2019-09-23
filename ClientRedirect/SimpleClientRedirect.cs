@@ -1,6 +1,7 @@
 ﻿using Protocol;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -9,6 +10,9 @@ namespace Network
 {
     class SimpleClientRedirect
     {
+        private FileStream sendFileStream = new FileStream("send.1", FileMode.Append);
+        private FileStream reciveFileStream = new FileStream("recive.1", FileMode.Append);
+
         static int protocalHeadSize = 13;
         public SimpleClientRedirect(String fromIp,int fromPort,String toIp,int toPort)
         {
@@ -30,7 +34,7 @@ namespace Network
         private int toPort = 5001;
         private int fromPort = 12345;
 
-        private static int bufferSize = 10240;
+        private static int bufferSize = 100;
         
         private Dictionary<Int32, ClientSocket> clientsTo = new Dictionary<int, ClientSocket>();
         private Socket clientFrom;
@@ -50,13 +54,18 @@ namespace Network
         private void ClientFromReciveCallBack(IAsyncResult asyncResult)
         {
             Socket socket = asyncResult.AsyncState as Socket;
-            Console.WriteLine("ClientFromReciveCallBack asyncResult.IsCompleted:" + asyncResult.IsCompleted);
+            //Console.WriteLine("ClientFromReciveCallBack asyncResult.IsCompleted:" + asyncResult.IsCompleted);
             if (IsOnline(socket))
             {
                 int size = socket.EndReceive(asyncResult);
                 byte[] tmp = new byte[size];
                 Array.Copy(clientFromReciveBuffer, tmp, size);
-                Console.WriteLine("client from recive :" + GetHexString(tmp, " "));
+                //Console.WriteLine("client from recive :" + GetHexString(tmp, " "));
+                lock (reciveFileStream)
+                {
+                    reciveFileStream.Write(tmp, 0, size);
+                    reciveFileStream.Flush();
+                }
                 DealData(socket, tmp);
                 socket.BeginReceive(clientFromReciveBuffer, 0, bufferSize, SocketFlags.None, new AsyncCallback(ClientFromReciveCallBack), socket);
 
@@ -80,8 +89,11 @@ namespace Network
                 for (int i = 0; i < s; i++)
                 {
                     socket.Receive(t, buffer.Length + i, 1, SocketFlags.None);
+                    reciveFileStream.Write(t, buffer.Length + i, 1);
                 }
+                reciveFileStream.Flush();
                 DealData(socket, t);
+                return;
             }
 
             //Console.WriteLine(DateTime.Now.ToString("HH: mm:ss.fff") + "转发接口接收到数据 :" + GetHexString(tmp, " "));
@@ -94,7 +106,9 @@ namespace Network
                 for (int i = 0; i < s; i++)
                 {
                     socket.Receive(t, buffer.Length + i, 1, SocketFlags.None);
+                    reciveFileStream.Write(t, buffer.Length + i, 1);
                 }
+                reciveFileStream.Flush();
                 DealData(socket, t);
             }
             else if (tmpData.DataSize == buffer.Length)
@@ -152,14 +166,14 @@ namespace Network
             ClientSocket clientSocket = asyncResult.AsyncState as ClientSocket;
             lock (clientSocket)
             {
-                Console.WriteLine("ClientToReciveCallBack asyncResult.IsCompleted:" + asyncResult.IsCompleted);
+                //Console.WriteLine("ClientToReciveCallBack asyncResult.IsCompleted:" + asyncResult.IsCompleted);
                 if (IsOnline(clientSocket.Socket))
                 {
 
                     int size = clientSocket.Socket.EndReceive(asyncResult);
                     byte[] tmp = new byte[size];
                     Array.Copy(clientSocket.Buffer, tmp, size);
-                    Console.WriteLine("client to recive :" + GetHexString(tmp, " "));
+                    //Console.WriteLine("client to recive :" + GetHexString(tmp, " "));
                     if (IsOnline(clientFrom))
                     {
                         ProtocolData protocolData = new ProtocolData();
@@ -169,6 +183,11 @@ namespace Network
                         //protocolData.Port = (clientSocket.Socket.RemoteEndPoint as IPEndPoint).Port;
                         protocolData.DataSize = size + protocalHeadSize;
                         clientFrom.BeginSend(protocolData.toByte(), 0, protocolData.toByte().Length, SocketFlags.None, new AsyncCallback(ClientFromSendCallBack), clientFrom);
+                        lock (sendFileStream)
+                        {
+                            sendFileStream.Write(protocolData.toByte(), 0, protocolData.toByte().Length);
+                            sendFileStream.Flush();
+                        }
                     }
                     clientSocket.Socket.BeginReceive(clientSocket.Buffer, 0, bufferSize- protocalHeadSize, SocketFlags.None, new AsyncCallback(ClientToReciveCallBack), clientSocket);
                 }
@@ -182,6 +201,11 @@ namespace Network
                         protocolData.DataSize = protocalHeadSize;
                         //protocolData.Port = (clientSocket.Socket.RemoteEndPoint as IPEndPoint).Port;
                         clientFrom.BeginSend(protocolData.toByte(), 0, protocolData.toByte().Length, SocketFlags.None, new AsyncCallback(ClientFromSendCallBack), clientFrom);
+                        lock (sendFileStream)
+                        {
+                            sendFileStream.Write(protocolData.toByte(), 0, protocolData.toByte().Length);
+                            sendFileStream.Flush();
+                        }
                     }
                 }
             }
