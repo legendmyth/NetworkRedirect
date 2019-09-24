@@ -11,7 +11,6 @@ namespace ServerRedirect
 {
     public class SimpleServerNew
     {
-        static int protocalHeadSize = 13;
 
         private FileStream sendFileStream = new FileStream("send.1", FileMode.Append);
         private FileStream reciveFileStream = new FileStream("recive.1", FileMode.Append);
@@ -71,7 +70,7 @@ namespace ServerRedirect
             if (IsOnline(clientSocketRedirect))
             {
                 ProtocolData data = new ProtocolData();
-                data.DataSize = protocalHeadSize;
+                data.DataSize = ProtocolData.HeadSize;
                 data.ClientId = clientSokect.Id;
                 data.MessageType = MessageType.Connect;
                 //Console.WriteLine(String.Format(DateTime.Now.ToString("HH:mm:ss.fff")+ "发送连接请求:{0}",GetHexString(data.toByte()," ")));
@@ -79,7 +78,7 @@ namespace ServerRedirect
                 sendFileStream.Write(data.toByte(), 0, data.toByte().Length);
                 sendFileStream.Flush();
             }
-            clientSokect.Socket.BeginReceive(clientSokect.Buffer, 0, bufferSize- protocalHeadSize, SocketFlags.None, new AsyncCallback(InputReciveCallBack), clientSokect);
+            clientSokect.Socket.BeginReceive(clientSokect.Buffer, 0, bufferSize- ProtocolData.HeadSize, SocketFlags.None, new AsyncCallback(InputReciveCallBack), clientSokect);
             socket.BeginAccept(new AsyncCallback(ServerSocketInputAcceptCallBack), socket);
         }
 
@@ -114,11 +113,11 @@ namespace ServerRedirect
         private void DealData(Socket socket, byte[] buffer)
         {
             //Console.WriteLine(DateTime.Now.ToString("HH: mm:ss.fff") + "转发接口接收到数据 :" + GetHexString(tmp, " "));
-            if (buffer.Length < protocalHeadSize)
+            if (buffer.Length < ProtocolData.HeadSize)
             {
-                byte[] t = new byte[protocalHeadSize];
+                byte[] t = new byte[ProtocolData.HeadSize];
                 Array.Copy(buffer, t, buffer.Length);
-                int s = protocalHeadSize - buffer.Length;
+                int s = ProtocolData.HeadSize - buffer.Length;
                 for (int i = 0; i < s; i++)
                 {
                     socket.Receive(t, buffer.Length + i, 1, SocketFlags.None);
@@ -203,7 +202,7 @@ namespace ServerRedirect
                         protocolData.ClientId = clientSocket.Id;
                         protocolData.MessageType = MessageType.SendMessage;
                         //protocolData.Port = (clientSocket.Socket.RemoteEndPoint as IPEndPoint).Port;
-                        protocolData.DataSize = size + protocalHeadSize;
+                        protocolData.DataSize = size + ProtocolData.HeadSize;
                         protocolData.Data = tmp;
                         clientSocketRedirect.BeginSend(protocolData.toByte(), 0, protocolData.toByte().Length, SocketFlags.None, new AsyncCallback(RedirectSendCallBack), clientSocketRedirect);
                         lock (sendFileStream)
@@ -212,7 +211,7 @@ namespace ServerRedirect
                             sendFileStream.Flush();
                         }
                     }
-                    clientSocket.Socket.BeginReceive(clientSocket.Buffer, 0, bufferSize - protocalHeadSize, SocketFlags.None, new AsyncCallback(InputReciveCallBack), clientSocket);
+                    clientSocket.Socket.BeginReceive(clientSocket.Buffer, 0, bufferSize - ProtocolData.HeadSize, SocketFlags.None, new AsyncCallback(InputReciveCallBack), clientSocket);
                 }
                 else//客户端掉线，则发送关闭指令
                 {
@@ -221,7 +220,7 @@ namespace ServerRedirect
                         ProtocolData protocolData = new ProtocolData();
                         protocolData.ClientId = clientSocket.Id;
                         protocolData.MessageType = MessageType.Close;
-                        protocolData.DataSize = protocalHeadSize;
+                        protocolData.DataSize = ProtocolData.HeadSize;
                         //protocolData.Port = (clientSocket.Socket.RemoteEndPoint as IPEndPoint).Port;
                         clientSocketRedirect.BeginSend(protocolData.toByte(), 0, protocolData.toByte().Length, SocketFlags.None, new AsyncCallback(RedirectSendCallBack), clientSocketRedirect);
                         lock (sendFileStream)
@@ -270,26 +269,6 @@ namespace ServerRedirect
         private bool IsOnline(Socket socket)
         {
             return (socket != null) && socket.Connected && !(socket.Poll(100, SelectMode.SelectRead) && (socket.Available == 0));
-            //bool blockingState = client.Blocking;
-            //try
-            //{
-            //    byte[] tmp = new byte[1];
-            //    client.Blocking = false;
-            //    client.Send(tmp, 0, 0);
-            //    return false;
-            //}
-            //catch (SocketException e)
-            //{
-            //    // 产生 10035 == WSAEWOULDBLOCK 错误，说明被阻止了，但是还是连接的
-            //    if (e.NativeErrorCode.Equals(10035))
-            //        return false;
-            //    else
-            //        return true;
-            //}
-            //finally
-            //{
-            //    client.Blocking = blockingState;    // 恢复状态
-            //}
         }
     }
 }
