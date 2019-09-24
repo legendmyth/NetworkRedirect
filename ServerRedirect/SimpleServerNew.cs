@@ -74,7 +74,6 @@ namespace ServerRedirect
                 data.DataSize = protocalHeadSize;
                 data.ClientId = clientSokect.Id;
                 data.MessageType = MessageType.Connect;
-                data.Port = (clientSokect.Socket.RemoteEndPoint as IPEndPoint).Port;
                 //Console.WriteLine(String.Format(DateTime.Now.ToString("HH:mm:ss.fff")+ "发送连接请求:{0}",GetHexString(data.toByte()," ")));
                 clientSocketRedirect.BeginSend(data.toByte(), 0, data.toByte().Length, SocketFlags.None, new AsyncCallback(RedirectSendCallBack), clientSocketRedirect);
                 sendFileStream.Write(data.toByte(), 0, data.toByte().Length);
@@ -270,7 +269,7 @@ namespace ServerRedirect
 
         private bool IsOnline(Socket socket)
         {
-            return (socket != null) && socket.Connected && !(socket.Poll(1000, SelectMode.SelectRead) && (socket.Available == 0));
+            return (socket != null) && socket.Connected && !(socket.Poll(100, SelectMode.SelectRead) && (socket.Available == 0));
             //bool blockingState = client.Blocking;
             //try
             //{
