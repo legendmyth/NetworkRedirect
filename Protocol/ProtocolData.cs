@@ -40,16 +40,16 @@ namespace Protocol
             {
                 throw new Exception("无法解析数据,数据长度太小");
             }
-            if (data[11] > 0x02)
+            if (data[8] > 0x02)
             {
                 throw new Exception("无法解析数据,无法识别消息类型");
             }
             else
             {
                 ProtocolData protocolData = new ProtocolData();
-                protocolData.ClientId = (data[0] << 24) + (data[1] << 16) + (data[2] << 8) + data[3];
-                protocolData.DataSize = (data[4] << 24) + (data[5] << 16) + (data[6] << 8) + data[7];
-                protocolData.MessageType = data[11] == 0x00 ? MessageType.Connect : (data[11] == 0x01 ? MessageType.SendMessage : MessageType.Close);
+                protocolData.ClientId = (data[3] << 24) + (data[2] << 16) + (data[1] << 8) + data[0];
+                protocolData.DataSize = (data[7] << 24) + (data[6] << 16) + (data[5] << 8) + data[4];
+                protocolData.MessageType = data[8] == 0x00 ? MessageType.Connect : (data[8] == 0x01 ? MessageType.SendMessage : MessageType.Close);
                 if (data.Length > 12)
                 {
                     byte[] tmp = new byte[data.Length - 12];
@@ -67,15 +67,15 @@ namespace Protocol
             {
                 Array.Copy(protocolData.Data, 0, tmp, 12, protocolData.Data.Length);
             }            
-            tmp[0] = (byte)(protocolData.clientId >> 24);
-            tmp[1] = (byte)(protocolData.clientId >> 16);
-            tmp[2] = (byte)(protocolData.clientId >> 8);
-            tmp[3] = (byte)(protocolData.clientId >> 0);
-            tmp[4] = (byte)(protocolData.DataSize >> 24);
-            tmp[5] = (byte)(protocolData.DataSize >> 16);
-            tmp[6] = (byte)(protocolData.DataSize >> 8);
-            tmp[7] = (byte)(protocolData.DataSize >> 0);
-            tmp[11] = (byte)protocolData.MessageType;
+            tmp[3] = (byte)(protocolData.clientId >> 24);
+            tmp[2] = (byte)(protocolData.clientId >> 16);
+            tmp[1] = (byte)(protocolData.clientId >> 8);
+            tmp[0] = (byte)(protocolData.clientId >> 0);
+            tmp[7] = (byte)(protocolData.DataSize >> 24);
+            tmp[6] = (byte)(protocolData.DataSize >> 16);
+            tmp[5] = (byte)(protocolData.DataSize >> 8);
+            tmp[4] = (byte)(protocolData.DataSize >> 0);
+            tmp[8] = (byte)protocolData.MessageType;
             return tmp;
         }
 
@@ -88,15 +88,15 @@ namespace Protocol
                 Array.Copy(this.Data, 0, tmp, 12, this.Data.Length);
             }
             
-            tmp[0] = (byte)(this.clientId >> 24);
-            tmp[1] = (byte)(this.clientId >> 16);
-            tmp[2] = (byte)(this.clientId >> 8);
-            tmp[3] = (byte)(this.clientId >> 0);
-            tmp[4] = (byte)(this.DataSize >> 24);
-            tmp[5] = (byte)(this.DataSize >> 16);
-            tmp[6] = (byte)(this.DataSize >> 8);
-            tmp[7] = (byte)(this.DataSize >> 0);
-            tmp[11] = (byte)this.MessageType;
+            tmp[3] = (byte)(this.clientId >> 24);
+            tmp[2] = (byte)(this.clientId >> 16);
+            tmp[1] = (byte)(this.clientId >> 8);
+            tmp[0] = (byte)(this.clientId >> 0);
+            tmp[7] = (byte)(this.DataSize >> 24);
+            tmp[6] = (byte)(this.DataSize >> 16);
+            tmp[5] = (byte)(this.DataSize >> 8);
+            tmp[4] = (byte)(this.DataSize >> 0);
+            tmp[8] = (byte)this.MessageType;
             return tmp;
         }
     }
